@@ -5,11 +5,8 @@ A Rust implementation of an efficient file synchronization tool using the rsync 
 ## Usage
 
 ```bash
-cargo run -- <source_path> <destination_path>
-```
-
-```bash
 cargo run -- --help
+cargo run -- <source_path> <destination_path>
 ```
 
 ### How It Works

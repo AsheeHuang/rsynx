@@ -7,6 +7,7 @@ use std::{
 use filetime::FileTime;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::fs::MetadataExt;
+use rand::Rng;
 
 fn setup_test_files(name: &str, src_content: &[u8], dst_content: &[u8]) -> (String, String) {
     let src_path = format!("test_src_{}", name);
@@ -99,6 +100,27 @@ fn test_binary_data() {
     let syncer = Syncer::new(src.clone(), dst.clone()).with_block_size(4);
     syncer.sync().unwrap();
     verify_content(&dst, src_content);
+    cleanup_test_files(&src, &dst);
+}
+
+#[test]
+fn test_large_file() {
+    let mut src_content = vec![0; 100000];
+    let dst_content = vec![0; 100000];
+
+    let mut rng = rand::rng();
+    for _ in 0..100 {
+        let random_byte_index = rng.random_range(0..src_content.len());
+        let random_bit_index = rng.random_range(0..8);
+        src_content[random_byte_index] ^= 1 << random_bit_index;
+    }
+
+    let (src, dst) = setup_test_files("large_file", &src_content, &dst_content);
+    let syncer = Syncer::new(src.clone(), dst.clone()).with_block_size(512);
+    syncer.sync().unwrap();
+
+    // Verify the content of the destination file
+    verify_content(&dst, &src_content);
     cleanup_test_files(&src, &dst);
 }
 
