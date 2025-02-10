@@ -8,6 +8,10 @@ A Rust implementation of an efficient file synchronization tool using the rsync 
 cargo run -- <source_path> <destination_path>
 ```
 
+```bash
+cargo run -- --help
+```
+
 ### How It Works
 
 The synchronization process works by:

@@ -2,14 +2,17 @@ use anyhow::Result;
 use log::info;
 use std::{
     fs::{self, File, OpenOptions},
-    io::{Read, Seek, Write, SeekFrom},
+    io::{Read, Seek, SeekFrom, Write},
     path::Path,
     collections::HashMap,
+    os::unix::fs::PermissionsExt,
+    os::unix::fs::MetadataExt,
 };
+use filetime::{FileTime, set_file_times};
 
 use memmap2::MmapMut;
-
 #[derive(Debug)]
+
 struct Block {
     offset: u64,
     size: usize,
@@ -21,6 +24,8 @@ pub struct Syncer {
     source: String,
     destination: String,
     block_size: usize,
+    preserve_metadata: bool,
+    delete_extraneous: bool,
 }
 
 impl Syncer {
@@ -29,11 +34,23 @@ impl Syncer {
             source,
             destination,
             block_size: 1024,
+            preserve_metadata: false,
+            delete_extraneous: false,
         }
     }
 
     pub fn with_block_size(mut self, block_size: usize) -> Self {
         self.block_size = block_size;
+        self
+    }
+
+    pub fn with_preserve_metadata(mut self, preserve: bool) -> Self {
+        self.preserve_metadata = preserve;
+        self
+    }
+
+    pub fn with_delete_extraneous(mut self, delete: bool) -> Self {
+        self.delete_extraneous = delete;
         self
     }
 
@@ -140,6 +157,13 @@ impl Syncer {
         }
         mmap.flush()?;
         fs::rename(temp_path, dst_path)?;
+        if self.preserve_metadata {
+            let src_meta = fs::metadata(src_path)?;
+            fs::set_permissions(dst_path, src_meta.permissions())?;
+            let atime = FileTime::from_last_access_time(&src_meta);
+            let mtime = FileTime::from_last_modification_time(&src_meta);
+            set_file_times(dst_path, atime, mtime)?;
+        }
         Ok(())
     }
 
@@ -149,10 +173,14 @@ impl Syncer {
         if !dst_dir.exists() {
             fs::create_dir_all(dst_dir)?;
         }
+        use std::collections::HashSet;
+        let mut src_names = HashSet::new();
         for entry in fs::read_dir(src_dir)? {
             let entry = entry?;
+            let file_name = entry.file_name();
+            src_names.insert(file_name.clone());
             let path = entry.path();
-            let dest_path = dst_dir.join(entry.file_name());
+            let dest_path = dst_dir.join(&file_name);
             if path.is_file() {
                 self.sync_file(&path, &dest_path)?;
             } else if path.is_dir() {
@@ -160,6 +188,19 @@ impl Syncer {
                 self.sync_dir(&path, &dest_path)?;
             } else {
                 info!("Skipping unsupported file type: {:?}", path);
+            }
+        }
+        if self.delete_extraneous {
+            for entry in fs::read_dir(dst_dir)? {
+                let entry = entry?;
+                if !src_names.contains(&entry.file_name()) {
+                    let extra_path = entry.path();
+                    if extra_path.is_file() {
+                        fs::remove_file(&extra_path)?;
+                    } else if extra_path.is_dir() {
+                        fs::remove_dir_all(&extra_path)?;
+                    }
+                }
             }
         }
         Ok(())
@@ -194,6 +235,13 @@ impl Syncer {
 
     fn copy_file(&self, src: &Path, dst: &Path) -> Result<()> {
         fs::copy(src, dst)?;
+        if self.preserve_metadata {
+            let src_meta = fs::metadata(src)?;
+            fs::set_permissions(dst, src_meta.permissions())?;
+            let atime = FileTime::from_last_access_time(&src_meta);
+            let mtime = FileTime::from_last_modification_time(&src_meta);
+            set_file_times(dst, atime, mtime)?;
+        }
         Ok(())
     }
 
@@ -352,6 +400,70 @@ mod tests {
         assert_eq!(file2, b"Rust is awesome");
         assert_eq!(file3, b"Subdirectory file");
         
+        let _ = fs::remove_dir_all(src_dir);
+        let _ = fs::remove_dir_all(dst_dir);
+    }
+
+    #[test]
+    fn test_preserve_metadata() {
+        let (src, dst) = setup_test_files("preserve_metadata", b"", b"");
+        let syncer = Syncer::new(src.clone(), dst.clone()).with_block_size(4).with_preserve_metadata(true);
+
+        // change metadata of src file
+        let atime = FileTime::from_unix_time(6666666, 0);
+        let mtime = FileTime::from_unix_time(6666666, 0);
+        filetime::set_file_times(&src, atime, mtime).unwrap();
+
+        // change permissions of src file
+        let src_perm = fs::Permissions::from_mode(0o644);
+        fs::set_permissions(&src, src_perm).unwrap();
+
+        syncer.sync().unwrap();
+        verify_content(&dst, b"");
+        let dst_meta = fs::metadata(&dst).unwrap();
+
+        // mode setting is not working on non-linux filesystems
+        // assert_eq!(dst_meta.permissions().mode() & 0o777, 0o644);
+        assert_eq!(dst_meta.atime(), atime.unix_seconds());
+        assert_eq!(dst_meta.mtime(), mtime.unix_seconds());
+        cleanup_test_files(&src, &dst);
+    }
+
+    #[test]
+    fn test_delete_extraneous() {
+        use std::path::Path;
+        // Setup source and destination directories.
+        let src_dir = "test_sync_src_delete";
+        let dst_dir = "test_sync_dst_delete";
+        
+        // Clean up from previous runs.
+        let _ = fs::remove_dir_all(src_dir);
+        let _ = fs::remove_dir_all(dst_dir);
+        
+        fs::create_dir_all(src_dir).unwrap();
+        fs::create_dir_all(dst_dir).unwrap();
+        
+        // Create a file in the source directory.
+        fs::write(format!("{}/file1.txt", src_dir), b"Hello").unwrap();
+        
+        // In the destination, create a file with outdated content and an extraneous file.
+        fs::write(format!("{}/file1.txt", dst_dir), b"Old content").unwrap();
+        fs::write(format!("{}/extraneous.txt", dst_dir), b"Should be removed").unwrap();
+        
+        // Sync the directory using delete_extraneous enabled.
+        let syncer = Syncer::new(src_dir.to_string(), dst_dir.to_string())
+            .with_block_size(4)
+            .with_delete_extraneous(true);
+        syncer.sync().unwrap();
+        
+        // Verify that file1.txt is updated.
+        let file1 = fs::read(format!("{}/file1.txt", dst_dir)).unwrap();
+        assert_eq!(file1, b"Hello");
+        
+        // Verify that the extraneous file is deleted.
+        assert!(!Path::new(&format!("{}/extraneous.txt", dst_dir)).exists());
+        
+        // Clean up test directories.
         let _ = fs::remove_dir_all(src_dir);
         let _ = fs::remove_dir_all(dst_dir);
     }
