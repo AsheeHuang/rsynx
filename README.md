@@ -24,3 +24,8 @@ The tool uses a combination of techniques to optimize performance:
 - Memory mapping for efficient file I/O
 - Rolling checksum algorithm for quick block matching
 - Block-level deduplication to minimize data transfer
+
+## TODO
+- [ ] Add support for TCP connections
+- [ ] Add support for compression
+- [ ] Add Progress Bar
