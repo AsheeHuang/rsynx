@@ -16,8 +16,7 @@ struct Args {
 fn main() -> Result<()> {
     env_logger::init();
     let args = Args::parse();
-    println!("Source: {}", args.source);
-    println!("Destination: {}", args.destination);
+    println!("Syncing {} to {}", args.source, args.destination);
 
     let syncer = Syncer::new(args.source, args.destination);
     syncer.sync()?;
@@ -25,4 +24,4 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-mod sync; 
+mod sync;
