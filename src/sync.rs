@@ -9,8 +9,6 @@ use std::{
 
 use memmap2::MmapMut;
 
-const BLOCK_SIZE: usize = 4;
-
 #[derive(Debug)]
 struct Block {
     offset: u64,
@@ -22,6 +20,7 @@ struct Block {
 pub struct Syncer {
     source: String,
     destination: String,
+    block_size: usize,
 }
 
 impl Syncer {
@@ -29,13 +28,18 @@ impl Syncer {
         Self {
             source,
             destination,
+            block_size: 1024,
         }
+    }
+
+    pub fn with_block_size(mut self, block_size: usize) -> Self {
+        self.block_size = block_size;
+        self
     }
 
     pub fn sync(&self) -> Result<()> {
         info!("Syncing...");
 
-        // check if source is a file or a directory
         let src_path = Path::new(&self.source);
         let dst_path = Path::new(&self.destination);
         if src_path.is_file() {
@@ -56,7 +60,6 @@ impl Syncer {
             return self.copy_file(src_path, dst_path);
         }
 
-        // 1. Build checksum blocks for the destination file.
         let dst_blocks = self.calculate_checksums(dst_path)?;
         let mut weak_lookup: HashMap<u32, Vec<&Block>> = HashMap::new();
         let mut strong_lookup: HashMap<[u8; 32], &Block> = HashMap::new();
@@ -65,7 +68,6 @@ impl Syncer {
             strong_lookup.insert(block.strong_checksum, block);
         }
 
-        // 2. Open the source file and prepare a temporary file.
         let mut src_file = File::open(src_path)?;
         let src_size = src_file.metadata()?.len();
         let temp_path = dst_path.with_extension("tmp");
@@ -75,55 +77,41 @@ impl Syncer {
             .create(true)
             .open(&temp_path)?;
 
-        // Set the temporary file size to match the source file.
-        // This is needed to safely map the entire file into memory.
         temp_file.set_len(src_size)?;
 
-        // Create a mutable memory map for the temporary file.
-        // This allows us to write data directly into memory, reducing explicit write calls.
         let mut mmap = unsafe { MmapMut::map_mut(&temp_file)? };
 
-        // If the source is smaller than one block, do a full copy.
-        if src_size < BLOCK_SIZE as u64 {
+        if src_size < self.block_size as u64 {
             return self.copy_file(src_path, dst_path);
         }
 
-        // 3. Read the initial window (of BLOCK_SIZE bytes) from the source file.
-        let mut window = vec![0; BLOCK_SIZE];
+        let mut window = vec![0; self.block_size];
         src_file.read_exact(&mut window)?;
         let mut weak = self.calculate_weak_checksum(&window);
         let mut offset: u64 = 0;
         let mut last_match: u64 = 0;
 
-        // 4. Sliding window: scan the source file.
-        while offset + BLOCK_SIZE as u64 <= src_size {
+        while offset + self.block_size as u64 <= src_size {
             if let Some(candidates) = weak_lookup.get(&weak) {
                 let strong = self.calculate_strong_checksum(&window);
                 if let Some(&block) = candidates.iter().find(|b| b.strong_checksum == strong) {
-                    // A matching block has been found.
-                    // First, copy any unmatched data from last_match to current offset.
                     if offset > last_match {
                         src_file.seek(SeekFrom::Start(last_match))?;
                         let mut unmatched = vec![0; (offset - last_match) as usize];
                         src_file.read_exact(&mut unmatched)?;
-                        // Write unmatched data directly into the mmap slice.
                         mmap[last_match as usize..offset as usize].copy_from_slice(&unmatched);
                     }
-                    // Then, copy the matching block from the destination file.
                     {
                         let mut dst_file = File::open(dst_path)?;
                         dst_file.seek(SeekFrom::Start(block.offset))?;
                         let mut block_data = vec![0; block.size];
                         dst_file.read_exact(&mut block_data)?;
-                        // Copy the existing block data into the mmap at the proper offset.
-                        // In this sliding window loop, the block size is assumed to be BLOCK_SIZE.
-                        mmap[offset as usize..(offset + BLOCK_SIZE as u64) as usize]
+                        mmap[offset as usize..(offset + self.block_size as u64) as usize]
                             .copy_from_slice(&block_data);
                     }
-                    offset += BLOCK_SIZE as u64;
+                    offset += self.block_size as u64;
                     last_match = offset;
-                    // Read the next window from the source file, if available.
-                    if offset + BLOCK_SIZE as u64 <= src_size {
+                    if offset + self.block_size as u64 <= src_size {
                         src_file.seek(SeekFrom::Start(offset))?;
                         src_file.read_exact(&mut window)?;
                         weak = self.calculate_weak_checksum(&window);
@@ -133,27 +121,23 @@ impl Syncer {
                     continue;
                 }
             }
-            // No match: slide the window one byte.
             offset += 1;
-            if offset + BLOCK_SIZE as u64 <= src_size {
+            if offset + self.block_size as u64 <= src_size {
                 let old_byte = window[0];
                 window.copy_within(1.., 0);
-                src_file.seek(SeekFrom::Start(offset + BLOCK_SIZE as u64 - 1))?;
-                src_file.read_exact(&mut window[BLOCK_SIZE - 1..BLOCK_SIZE])?;
-                weak = self.update_weak_checksum(old_byte, window[BLOCK_SIZE - 1], weak, BLOCK_SIZE);
+                src_file.seek(SeekFrom::Start(offset + self.block_size as u64 - 1))?;
+                src_file.read_exact(&mut window[self.block_size - 1..self.block_size])?;
+                weak = self.update_weak_checksum(old_byte, window[self.block_size - 1], weak, self.block_size);
             } else {
                 break;
             }
         }
-        // 5. Write any remaining data from the source file into the mmap.
         if last_match < src_size {
             src_file.seek(SeekFrom::Start(last_match))?;
             let mut remainder = Vec::new();
             src_file.read_to_end(&mut remainder)?;
             mmap[last_match as usize..].copy_from_slice(&remainder);
         }
-        // 6. Flush the mmap to ensure all data is written to disk,
-        // and then replace the destination file with the temporary file.
         mmap.flush()?;
         fs::rename(temp_path, dst_path)?;
         Ok(())
@@ -164,12 +148,12 @@ impl Syncer {
         let file_size = file.metadata()?.len();
         let mut blocks = Vec::new();
         let mut offset: u64 = 0;
-        let mut buffer = vec![0; BLOCK_SIZE];
+        let mut buffer = vec![0; self.block_size];
         while offset < file_size {
-            let read_size = if offset + BLOCK_SIZE as u64 > file_size {
+            let read_size = if offset + self.block_size as u64 > file_size {
                 (file_size - offset) as usize
             } else {
-                BLOCK_SIZE
+                self.block_size
             };
             buffer.resize(read_size, 0);
             file.read_exact(&mut buffer)?;
@@ -255,7 +239,7 @@ mod tests {
     #[test]
     fn test_basic_sync() {
         let (src, dst) = setup_test_files("basic", b"0123456789", b"012345a789");
-        let syncer = Syncer::new(src.clone(), dst.clone());
+        let syncer = Syncer::new(src.clone(), dst.clone()).with_block_size(4);
         syncer.sync().unwrap();
         verify_content(&dst, b"0123456789");
         cleanup_test_files(&src, &dst);
@@ -264,7 +248,7 @@ mod tests {
     #[test]
     fn test_empty_destination() {
         let (src, dst) = setup_test_files("empty", b"0123456789", b"");
-        let syncer = Syncer::new(src.clone(), dst.clone());
+        let syncer = Syncer::new(src.clone(), dst.clone()).with_block_size(4);
         syncer.sync().unwrap();
         verify_content(&dst, b"0123456789");
         cleanup_test_files(&src, &dst);
@@ -273,7 +257,7 @@ mod tests {
     #[test]
     fn test_identical_files() {
         let (src, dst) = setup_test_files("identical", b"0123456789", b"0123456789");
-        let syncer = Syncer::new(src.clone(), dst.clone());
+        let syncer = Syncer::new(src.clone(), dst.clone()).with_block_size(4);
         syncer.sync().unwrap();
         verify_content(&dst, b"0123456789");
         cleanup_test_files(&src, &dst);
@@ -282,7 +266,7 @@ mod tests {
     #[test]
     fn test_multiple_changes() {
         let (src, dst) = setup_test_files("multiple_changes", b"0123456789", b"01a34b6c89");
-        let syncer = Syncer::new(src.clone(), dst.clone());
+        let syncer = Syncer::new(src.clone(), dst.clone()).with_block_size(4);
         syncer.sync().unwrap();
         verify_content(&dst, b"0123456789");
         cleanup_test_files(&src, &dst);
@@ -293,7 +277,7 @@ mod tests {
         let src_content = "The quick brown fox jumps over the lazy dog".as_bytes();
         let dst_content = "The quick brown cat jumps over the lazy dog".as_bytes();
         let (src, dst) = setup_test_files("longer_files", src_content, dst_content);
-        let syncer = Syncer::new(src.clone(), dst.clone());
+        let syncer = Syncer::new(src.clone(), dst.clone()).with_block_size(4);
         syncer.sync().unwrap();
         verify_content(&dst, src_content);
         cleanup_test_files(&src, &dst);
@@ -302,7 +286,7 @@ mod tests {
     #[test]
     fn test_different_sizes() {
         let (src, dst) = setup_test_files("different_sizes", b"0123456789", b"01234");
-        let syncer = Syncer::new(src.clone(), dst.clone());
+        let syncer = Syncer::new(src.clone(), dst.clone()).with_block_size(4);
         syncer.sync().unwrap();
         verify_content(&dst, b"0123456789");
         cleanup_test_files(&src, &dst);
@@ -313,7 +297,7 @@ mod tests {
         let src_content = &[0, 1, 2, 3, 255, 254, 253, 252];
         let dst_content = &[0, 1, 2, 3, 0, 254, 253, 252];
         let (src, dst) = setup_test_files("binary_data", src_content, dst_content);
-        let syncer = Syncer::new(src.clone(), dst.clone());
+        let syncer = Syncer::new(src.clone(), dst.clone()).with_block_size(4);
         syncer.sync().unwrap();
         verify_content(&dst, src_content);
         cleanup_test_files(&src, &dst);
