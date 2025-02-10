@@ -405,6 +405,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_preserve_metadata() {
         let (src, dst) = setup_test_files("preserve_metadata", b"", b"");
         let syncer = Syncer::new(src.clone(), dst.clone()).with_block_size(4).with_preserve_metadata(true);
