@@ -1,11 +1,13 @@
 use anyhow::Result;
 use log::info;
 use std::{
-    fs::{self, File},
-    io::{Read, Write, Seek, SeekFrom},
+    fs::{self, File, OpenOptions},
+    io::{Read, Seek, Write, SeekFrom},
     path::Path,
     collections::HashMap,
 };
+
+use memmap2::MmapMut;
 
 const BLOCK_SIZE: usize = 4;
 
@@ -67,7 +69,19 @@ impl Syncer {
         let mut src_file = File::open(src_path)?;
         let src_size = src_file.metadata()?.len();
         let temp_path = dst_path.with_extension("tmp");
-        let mut temp_file = File::create(&temp_path)?;
+        let temp_file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(&temp_path)?;
+
+        // Set the temporary file size to match the source file.
+        // This is needed to safely map the entire file into memory.
+        temp_file.set_len(src_size)?;
+
+        // Create a mutable memory map for the temporary file.
+        // This allows us to write data directly into memory, reducing explicit write calls.
+        let mut mmap = unsafe { MmapMut::map_mut(&temp_file)? };
 
         // If the source is smaller than one block, do a full copy.
         if src_size < BLOCK_SIZE as u64 {
@@ -92,7 +106,8 @@ impl Syncer {
                         src_file.seek(SeekFrom::Start(last_match))?;
                         let mut unmatched = vec![0; (offset - last_match) as usize];
                         src_file.read_exact(&mut unmatched)?;
-                        temp_file.write_all(&unmatched)?;
+                        // Write unmatched data directly into the mmap slice.
+                        mmap[last_match as usize..offset as usize].copy_from_slice(&unmatched);
                     }
                     // Then, copy the matching block from the destination file.
                     {
@@ -100,7 +115,10 @@ impl Syncer {
                         dst_file.seek(SeekFrom::Start(block.offset))?;
                         let mut block_data = vec![0; block.size];
                         dst_file.read_exact(&mut block_data)?;
-                        temp_file.write_all(&block_data)?;
+                        // Copy the existing block data into the mmap at the proper offset.
+                        // In this sliding window loop, the block size is assumed to be BLOCK_SIZE.
+                        mmap[offset as usize..(offset + BLOCK_SIZE as u64) as usize]
+                            .copy_from_slice(&block_data);
                     }
                     offset += BLOCK_SIZE as u64;
                     last_match = offset;
@@ -127,14 +145,16 @@ impl Syncer {
                 break;
             }
         }
-        // 5. Write any remaining data from the source file.
+        // 5. Write any remaining data from the source file into the mmap.
         if last_match < src_size {
             src_file.seek(SeekFrom::Start(last_match))?;
             let mut remainder = Vec::new();
             src_file.read_to_end(&mut remainder)?;
-            temp_file.write_all(&remainder)?;
+            mmap[last_match as usize..].copy_from_slice(&remainder);
         }
-        // 6. Replace the destination file with the temporary file.
+        // 6. Flush the mmap to ensure all data is written to disk,
+        // and then replace the destination file with the temporary file.
+        mmap.flush()?;
         fs::rename(temp_path, dst_path)?;
         Ok(())
     }
