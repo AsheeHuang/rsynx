@@ -39,15 +39,15 @@ impl Syncer {
 
     pub fn sync(&self) -> Result<()> {
         info!("Syncing...");
-
         let src_path = Path::new(&self.source);
         let dst_path = Path::new(&self.destination);
         if src_path.is_file() {
             self.sync_file(src_path, dst_path)?;
+        } else if src_path.is_dir() {
+            self.sync_dir(src_path, dst_path)?;
         } else {
-            todo!()
+            return Err(anyhow::anyhow!("Unsupported source type"));
         }
-
         info!("Sync completed");
         Ok(())
     }
@@ -140,6 +140,28 @@ impl Syncer {
         }
         mmap.flush()?;
         fs::rename(temp_path, dst_path)?;
+        Ok(())
+    }
+
+    /// Recursively syncs a directory from `src_dir` to `dst_dir`.
+    pub fn sync_dir(&self, src_dir: &Path, dst_dir: &Path) -> Result<()> {
+        info!("Syncing directory: {:?} -> {:?}", src_dir, dst_dir);
+        if !dst_dir.exists() {
+            fs::create_dir_all(dst_dir)?;
+        }
+        for entry in fs::read_dir(src_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            let dest_path = dst_dir.join(entry.file_name());
+            if path.is_file() {
+                self.sync_file(&path, &dest_path)?;
+            } else if path.is_dir() {
+                // Recursively sync subdirectories
+                self.sync_dir(&path, &dest_path)?;
+            } else {
+                info!("Skipping unsupported file type: {:?}", path);
+            }
+        }
         Ok(())
     }
 
@@ -301,5 +323,36 @@ mod tests {
         syncer.sync().unwrap();
         verify_content(&dst, src_content);
         cleanup_test_files(&src, &dst);
+    }
+
+    #[test]
+    fn test_basic_sync_directory() {
+        let src_dir = "test_sync_src_dir";
+        let dst_dir = "test_sync_dst_dir";
+        
+        let _ = fs::remove_dir_all(src_dir);
+        let _ = fs::remove_dir_all(dst_dir);
+        
+        fs::create_dir_all(src_dir).unwrap();
+        let sub_dir = format!("{}/subdir", src_dir);
+        fs::create_dir_all(&sub_dir).unwrap();
+        
+        fs::write(format!("{}/file1.txt", src_dir), b"Hello world").unwrap();
+        fs::write(format!("{}/file2.txt", src_dir), b"Rust is awesome").unwrap();
+        fs::write(format!("{}/file3.txt", sub_dir), b"Subdirectory file").unwrap();
+        
+        let syncer = Syncer::new(src_dir.to_string(), dst_dir.to_string()).with_block_size(4);
+        syncer.sync().unwrap();
+        
+        let file1 = fs::read(format!("{}/file1.txt", dst_dir)).unwrap();
+        let file2 = fs::read(format!("{}/file2.txt", dst_dir)).unwrap();
+        let file3 = fs::read(format!("{}/subdir/file3.txt", dst_dir)).unwrap();
+        
+        assert_eq!(file1, b"Hello world");
+        assert_eq!(file2, b"Rust is awesome");
+        assert_eq!(file3, b"Subdirectory file");
+        
+        let _ = fs::remove_dir_all(src_dir);
+        let _ = fs::remove_dir_all(dst_dir);
     }
 }
