@@ -1,4 +1,4 @@
-use rsynx::sync::LocalSyncer;
+use rsynx::local_sync::LocalSyncer;
 use std::{
     fs::{self, File},
     io::{Read, Write},
