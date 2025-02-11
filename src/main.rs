@@ -43,8 +43,8 @@ fn main() -> Result<()> {
             let parts = destination.split(":").collect::<Vec<&str>>();
             let syncer = NetworkSyncer::new(parts[0].to_string(), args.port, source, parts[1].to_string())
                 .with_block_size(args.block_size);
-            let result = syncer.sync().with_context(|| "Failed to sync")?;
-            println!("Transferred: {} bytes, Not transferred: {} bytes", result.new_bytes, result.reused_bytes);
+            let _result = syncer.sync().with_context(|| "Failed to sync")?;
+            println!("Sync complete!");
         } else {
             let syncer = LocalSyncer::new(source, destination)
                 .with_block_size(args.block_size)

@@ -206,9 +206,7 @@ impl NetworkSyncer {
         let dst_filename = parts.next().ok_or_else(|| anyhow::anyhow!("Missing dst filename in FILE command"))?;
         let _filesize: u64 = parts.next().ok_or_else(|| anyhow::anyhow!("Missing filesize in FILE command"))?.parse()?;
         
-        println!("Destination file: {}", dst_filename);
         let target = Path::new(dst_filename);
-        println!("Target file: {}", target.display());
         
         if target.exists() {
             let mut syncer = Syncer::new();
