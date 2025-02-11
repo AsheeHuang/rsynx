@@ -31,7 +31,8 @@ fn main() -> Result<()> {
         .with_block_size(args.block_size)
         .with_preserve_metadata(args.preserve_metadata)
         .with_delete_extraneous(args.delete_extraneous);
-    syncer.sync()?;
+    let result = syncer.sync()?;
+    println!("Transferred: {} bytes, Not transferred: {} bytes", result.new_bytes, result.reused_bytes);
 
     Ok(())
 }

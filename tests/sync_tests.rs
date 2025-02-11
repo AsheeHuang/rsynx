@@ -117,7 +117,8 @@ fn test_large_file() {
 
     let (src, dst) = setup_test_files("large_file", &src_content, &dst_content);
     let syncer = Syncer::new(src.clone(), dst.clone()).with_block_size(512);
-    syncer.sync().unwrap();
+    let result = syncer.sync().unwrap();
+    println!("Transferred: {} bytes, Not transferred: {} bytes", result.new_bytes, result.reused_bytes);
 
     // Verify the content of the destination file
     verify_content(&dst, &src_content);
@@ -217,3 +218,29 @@ fn test_delete_extraneous() {
     let _ = fs::remove_dir_all(src_dir);
     let _ = fs::remove_dir_all(dst_dir);
 } 
+
+#[test]
+fn test_no_delete_extraneous() {
+    let src_dir = "test_sync_src_no_delete";
+    let dst_dir = "test_sync_dst_no_delete";
+
+    let _ = fs::remove_dir_all(src_dir);
+    let _ = fs::remove_dir_all(dst_dir);
+
+    fs::create_dir_all(src_dir).unwrap();
+    fs::create_dir_all(dst_dir).unwrap();
+
+    fs::write(format!("{}/file1.txt", src_dir), b"Hello").unwrap();
+    fs::write(format!("{}/file2.txt", dst_dir), b"Hello").unwrap();
+
+    let syncer = Syncer::new(src_dir.to_string(), dst_dir.to_string())
+        .with_block_size(4)
+        .with_delete_extraneous(false);
+    syncer.sync().unwrap();
+    
+    assert!(Path::new(&format!("{}/file1.txt", dst_dir)).exists());
+    assert!(Path::new(&format!("{}/file2.txt", dst_dir)).exists());
+
+    let _ = fs::remove_dir_all(src_dir);
+    let _ = fs::remove_dir_all(dst_dir);
+}

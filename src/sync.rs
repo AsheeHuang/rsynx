@@ -18,6 +18,12 @@ struct Block {
     strong_checksum: [u8; 32],
 }
 
+/// Result returned by the sync process, measured in bytes.
+pub struct TransferResult {
+    pub new_bytes: usize,
+    pub reused_bytes: usize,
+}
+
 pub struct Syncer {
     source: String,
     destination: String,
@@ -52,22 +58,22 @@ impl Syncer {
         self
     }
 
-    pub fn sync(&self) -> Result<()> {
+    pub fn sync(&self) -> Result<TransferResult> {
         info!("Syncing...");
         let src_path = Path::new(&self.source);
         let dst_path = Path::new(&self.destination);
-        if src_path.is_file() {
-            self.sync_file(src_path, dst_path)?;
+        let result = if src_path.is_file() {
+            self.sync_file(src_path, dst_path)?
         } else if src_path.is_dir() {
-            self.sync_dir(src_path, dst_path)?;
+            self.sync_dir(src_path, dst_path)?
         } else {
             return Err(anyhow::anyhow!("Unsupported source type"));
-        }
+        };
         info!("Sync completed");
-        Ok(())
+        Ok(result)
     }
 
-    fn sync_file(&self, src_path: &Path, dst_path: &Path) -> Result<()> {
+    fn sync_file(&self, src_path: &Path, dst_path: &Path) -> Result<TransferResult> {
         info!("Syncing file: {:?} -> {:?}", src_path, dst_path);
 
         if !dst_path.exists() {
@@ -77,10 +83,8 @@ impl Syncer {
 
         let dst_blocks = self.calculate_checksums(dst_path)?;
         let mut weak_lookup: HashMap<u32, Vec<&Block>> = HashMap::new();
-        let mut strong_lookup: HashMap<[u8; 32], &Block> = HashMap::new();
         for block in &dst_blocks {
             weak_lookup.entry(block.weak_checksum).or_default().push(block);
-            strong_lookup.insert(block.strong_checksum, block);
         }
 
         let mut src_file = File::open(src_path)?;
@@ -105,6 +109,7 @@ impl Syncer {
         let mut weak = self.calculate_weak_checksum(&window);
         let mut offset: u64 = 0;
         let mut last_match: u64 = 0;
+        let mut reused_bytes = 0usize;
 
         while offset + self.block_size as u64 <= src_size {
             if let Some(candidates) = weak_lookup.get(&weak) {
@@ -124,6 +129,7 @@ impl Syncer {
                         mmap[offset as usize..(offset + self.block_size as u64) as usize]
                             .copy_from_slice(&block_data);
                     }
+                    reused_bytes += block.size;
                     offset += self.block_size as u64;
                     last_match = offset;
                     if offset + self.block_size as u64 <= src_size {
@@ -162,17 +168,20 @@ impl Syncer {
             let mtime = FileTime::from_last_modification_time(&src_meta);
             set_file_times(dst_path, atime, mtime)?;
         }
-        Ok(())
+        let total_bytes = src_size as usize;
+        let new_bytes = total_bytes.saturating_sub(reused_bytes);
+        Ok(TransferResult { new_bytes, reused_bytes })
     }
 
     /// Recursively syncs a directory from `src_dir` to `dst_dir`.
-    pub fn sync_dir(&self, src_dir: &Path, dst_dir: &Path) -> Result<()> {
+    pub fn sync_dir(&self, src_dir: &Path, dst_dir: &Path) -> Result<TransferResult> {
         info!("Syncing directory: {:?} -> {:?}", src_dir, dst_dir);
         if !dst_dir.exists() {
             fs::create_dir_all(dst_dir)?;
         }
         use std::collections::HashSet;
         let mut src_names = HashSet::new();
+        let mut total_reused_bytes = 0usize;
         for entry in fs::read_dir(src_dir)? {
             let entry = entry?;
             let file_name = entry.file_name();
@@ -180,10 +189,11 @@ impl Syncer {
             let path = entry.path();
             let dest_path = dst_dir.join(&file_name);
             if path.is_file() {
-                self.sync_file(&path, &dest_path)?;
+                let res = self.sync_file(&path, &dest_path)?;
+                total_reused_bytes += res.reused_bytes;
             } else if path.is_dir() {
-                // Recursively sync subdirectories
-                self.sync_dir(&path, &dest_path)?;
+                let res = self.sync_dir(&path, &dest_path)?;
+                total_reused_bytes += res.reused_bytes;
             } else {
                 info!("Skipping unsupported file type: {:?}", path);
             }
@@ -201,7 +211,9 @@ impl Syncer {
                 }
             }
         }
-        Ok(())
+        let total_bytes = fs::metadata(src_dir)?.len() as usize;
+        let new_bytes = total_bytes.saturating_sub(total_reused_bytes);
+        Ok(TransferResult { new_bytes, reused_bytes: total_reused_bytes })
     }
 
     fn calculate_checksums(&self, path: &Path) -> Result<Vec<Block>> {
@@ -231,7 +243,7 @@ impl Syncer {
         Ok(blocks)
     }
 
-    fn copy_file(&self, src: &Path, dst: &Path) -> Result<()> {
+    fn copy_file(&self, src: &Path, dst: &Path) -> Result<TransferResult> {
         fs::copy(src, dst)?;
         if self.preserve_metadata {
             let src_meta = fs::metadata(src)?;
@@ -240,7 +252,8 @@ impl Syncer {
             let mtime = FileTime::from_last_modification_time(&src_meta);
             set_file_times(dst, atime, mtime)?;
         }
-        Ok(())
+        let src_size = fs::metadata(src)?.len() as usize;
+        Ok(TransferResult { new_bytes: src_size, reused_bytes: 0 })
     }
 
     fn calculate_weak_checksum(&self, data: &[u8]) -> u32 {
