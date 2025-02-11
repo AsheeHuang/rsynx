@@ -5,8 +5,12 @@ A Rust implementation of an efficient file synchronization tool using the rsync 
 ## Usage
 
 ```bash
-cargo run -- --help
+# Sync with local files
 cargo run -- <source_path> <destination_path>
+
+# Sync with network
+cargo run -- --server --port <port>
+cargo run -- <source_path> <server_address>:<destination_path> --port <port>
 ```
 
 ### How It Works
@@ -26,6 +30,6 @@ The tool uses a combination of techniques to optimize performance:
 - Block-level deduplication to minimize data transfer
 
 ## TODO
-- [ ] Add support for TCP connections
+- [x] Add support for TCP connections
 - [ ] Add support for compression
 - [ ] Add Progress Bar
