@@ -1,12 +1,14 @@
 use anyhow::Result;
 use log::info;
 use std::{
+    cmp::min,
+    collections::HashMap,
     fs::{self, File, OpenOptions},
     io::{Read, Seek, SeekFrom},
-    path::Path,
-    collections::HashMap,
+    path::Path
 };
 use filetime::{FileTime, set_file_times};
+use anyhow::Context;
 
 use memmap2::MmapMut;
 #[derive(Debug)]
@@ -89,6 +91,11 @@ impl Syncer {
 
         let mut src_file = File::open(src_path)?;
         let src_size = src_file.metadata()?.len();
+
+        if src_size < self.block_size as u64 {
+            return self.copy_file(src_path, dst_path);
+        }
+
         let temp_path = dst_path.with_extension("tmp");
         let temp_file = OpenOptions::new()
             .read(true)
@@ -99,12 +106,7 @@ impl Syncer {
         temp_file.set_len(src_size)?;
 
         let mut mmap = unsafe { MmapMut::map_mut(&temp_file)? };
-
-        if src_size < self.block_size as u64 {
-            return self.copy_file(src_path, dst_path);
-        }
-
-        let mut window = vec![0; self.block_size];
+        let mut window = vec![0; min(self.block_size, src_size as usize)];
         src_file.read_exact(&mut window)?;
         let mut weak = self.calculate_weak_checksum(&window);
         let mut offset: u64 = 0;
@@ -160,14 +162,19 @@ impl Syncer {
             mmap[last_match as usize..].copy_from_slice(&remainder);
         }
         mmap.flush()?;
-        fs::rename(temp_path, dst_path)?;
+        
         if self.preserve_metadata {
             let src_meta = fs::metadata(src_path)?;
-            fs::set_permissions(dst_path, src_meta.permissions())?;
+            fs::set_permissions(&temp_path, src_meta.permissions())
+                .with_context(|| format!("Failed to set permissions for temporary file: {:?}", temp_path))?;
             let atime = FileTime::from_last_access_time(&src_meta);
             let mtime = FileTime::from_last_modification_time(&src_meta);
-            set_file_times(dst_path, atime, mtime)?;
+            set_file_times(&temp_path, atime, mtime)
+                .with_context(|| format!("Failed to set file times for temporary file: {:?}", temp_path))?;
         }
+
+        fs::rename(temp_path.clone(), dst_path)?;
+
         let total_bytes = src_size as usize;
         let new_bytes = total_bytes.saturating_sub(reused_bytes);
         Ok(TransferResult { new_bytes, reused_bytes })
@@ -244,15 +251,23 @@ impl Syncer {
     }
 
     fn copy_file(&self, src: &Path, dst: &Path) -> Result<TransferResult> {
-        fs::copy(src, dst)?;
+        // check write permissions of dst
+        fs::copy(src, dst)
+            .with_context(|| format!("Failed to copy file from {:?} to {:?}", src, dst))?;
+
         if self.preserve_metadata {
-            let src_meta = fs::metadata(src)?;
-            fs::set_permissions(dst, src_meta.permissions())?;
+            let src_meta = fs::metadata(src)
+                .with_context(|| format!("Failed to get metadata for source file: {:?}", src))?;
+            fs::set_permissions(dst, src_meta.permissions())
+                .with_context(|| format!("Failed to set permissions for destination file: {:?}", dst))?;
             let atime = FileTime::from_last_access_time(&src_meta);
             let mtime = FileTime::from_last_modification_time(&src_meta);
-            set_file_times(dst, atime, mtime)?;
+            set_file_times(dst, atime, mtime)
+                .with_context(|| format!("Failed to set file times for destination file: {:?}", dst))?;
         }
-        let src_size = fs::metadata(src)?.len() as usize;
+        let src_size = fs::metadata(src)
+            .with_context(|| format!("Failed to get metadata for source file: {:?}", src))?
+            .len() as usize;
         Ok(TransferResult { new_bytes: src_size, reused_bytes: 0 })
     }
 
