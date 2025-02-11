@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
-use crate::sync::Syncer;
+use crate::sync::LocalSyncer;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -27,7 +27,7 @@ fn main() -> Result<()> {
     let args = Args::parse();
     println!("Syncing {} to {}", args.source, args.destination);
 
-    let syncer = Syncer::new(args.source, args.destination)
+    let syncer = LocalSyncer::new(args.source, args.destination)
         .with_block_size(args.block_size)
         .with_preserve_metadata(args.preserve_metadata)
         .with_delete_extraneous(args.delete_extraneous);

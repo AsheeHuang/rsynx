@@ -1,4 +1,4 @@
-use rsynx::sync::Syncer;
+use rsynx::sync::LocalSyncer;
 use std::{
     fs::{self, File},
     io::{Read, Write},
@@ -39,7 +39,7 @@ fn verify_content(path: &str, expected: &[u8]) {
 #[test]
 fn test_basic_sync() {
     let (src, dst) = setup_test_files("basic", b"0123456789", b"012345a789");
-    let syncer = Syncer::new(src.clone(), dst.clone()).with_block_size(4);
+    let syncer = LocalSyncer::new(src.clone(), dst.clone()).with_block_size(4);
     syncer.sync().unwrap();
     verify_content(&dst, b"0123456789");
     cleanup_test_files(&src, &dst);
@@ -48,7 +48,7 @@ fn test_basic_sync() {
 #[test]
 fn test_empty_destination() {
     let (src, dst) = setup_test_files("empty", b"0123456789", b"");
-    let syncer = Syncer::new(src.clone(), dst.clone()).with_block_size(4);
+    let syncer = LocalSyncer::new(src.clone(), dst.clone()).with_block_size(4);
     syncer.sync().unwrap();
     verify_content(&dst, b"0123456789");
     cleanup_test_files(&src, &dst);
@@ -57,7 +57,7 @@ fn test_empty_destination() {
 #[test]
 fn test_identical_files() {
     let (src, dst) = setup_test_files("identical", b"0123456789", b"0123456789");
-    let syncer = Syncer::new(src.clone(), dst.clone()).with_block_size(4);
+    let syncer = LocalSyncer::new(src.clone(), dst.clone()).with_block_size(4);
     syncer.sync().unwrap();
     verify_content(&dst, b"0123456789");
     cleanup_test_files(&src, &dst);
@@ -66,7 +66,7 @@ fn test_identical_files() {
 #[test]
 fn test_multiple_changes() {
     let (src, dst) = setup_test_files("multiple_changes", b"0123456789", b"01a34b6c89");
-    let syncer = Syncer::new(src.clone(), dst.clone()).with_block_size(4);
+    let syncer = LocalSyncer::new(src.clone(), dst.clone()).with_block_size(4);
     syncer.sync().unwrap();
     verify_content(&dst, b"0123456789");
     cleanup_test_files(&src, &dst);
@@ -77,7 +77,7 @@ fn test_longer_files() {
     let src_content = "The quick brown fox jumps over the lazy dog".as_bytes();
     let dst_content = "The quick brown cat jumps over the lazy dog".as_bytes();
     let (src, dst) = setup_test_files("longer_files", src_content, dst_content);
-    let syncer = Syncer::new(src.clone(), dst.clone()).with_block_size(4);
+    let syncer = LocalSyncer::new(src.clone(), dst.clone()).with_block_size(4);
     syncer.sync().unwrap();
     verify_content(&dst, src_content);
     cleanup_test_files(&src, &dst);
@@ -86,7 +86,7 @@ fn test_longer_files() {
 #[test]
 fn test_different_sizes() {
     let (src, dst) = setup_test_files("different_sizes", b"0123456789", b"01234");
-    let syncer = Syncer::new(src.clone(), dst.clone()).with_block_size(4);
+    let syncer = LocalSyncer::new(src.clone(), dst.clone()).with_block_size(4);
     syncer.sync().unwrap();
     verify_content(&dst, b"0123456789");
     cleanup_test_files(&src, &dst);
@@ -97,7 +97,7 @@ fn test_binary_data() {
     let src_content = &[0, 1, 2, 3, 255, 254, 253, 252];
     let dst_content = &[0, 1, 2, 3, 0, 254, 253, 252];
     let (src, dst) = setup_test_files("binary_data", src_content, dst_content);
-    let syncer = Syncer::new(src.clone(), dst.clone()).with_block_size(4);
+    let syncer = LocalSyncer::new(src.clone(), dst.clone()).with_block_size(4);
     syncer.sync().unwrap();
     verify_content(&dst, src_content);
     cleanup_test_files(&src, &dst);
@@ -116,7 +116,7 @@ fn test_large_file() {
     }
 
     let (src, dst) = setup_test_files("large_file", &src_content, &dst_content);
-    let syncer = Syncer::new(src.clone(), dst.clone()).with_block_size(512);
+    let syncer = LocalSyncer::new(src.clone(), dst.clone()).with_block_size(512);
     let result = syncer.sync().unwrap();
     println!("Transferred: {} bytes, Not transferred: {} bytes", result.new_bytes, result.reused_bytes);
 
@@ -141,7 +141,7 @@ fn test_basic_sync_directory() {
     fs::write(format!("{}/file2.txt", src_dir), b"Rust is awesome").unwrap();
     fs::write(format!("{}/file3.txt", sub_dir), b"Subdirectory file").unwrap();
 
-    let syncer = Syncer::new(src_dir.to_string(), dst_dir.to_string()).with_block_size(4);
+    let syncer = LocalSyncer::new(src_dir.to_string(), dst_dir.to_string()).with_block_size(4);
     syncer.sync().unwrap();
 
     let file1 = fs::read(format!("{}/file1.txt", dst_dir)).unwrap();
@@ -160,7 +160,7 @@ fn test_basic_sync_directory() {
 #[ignore]
 fn test_preserve_metadata() {
     let (src, dst) = setup_test_files("preserve_metadata", b"", b"");
-    let syncer = Syncer::new(src.clone(), dst.clone())
+    let syncer = LocalSyncer::new(src.clone(), dst.clone())
         .with_block_size(4)
         .with_preserve_metadata(true);
 
@@ -203,7 +203,7 @@ fn test_delete_extraneous() {
     fs::write(format!("{}/extraneous.txt", dst_dir), b"Should be removed").unwrap();
 
     // Sync with delete_extraneous enabled.
-    let syncer = Syncer::new(src_dir.to_string(), dst_dir.to_string())
+    let syncer = LocalSyncer::new(src_dir.to_string(), dst_dir.to_string())
         .with_block_size(4)
         .with_delete_extraneous(true);
     syncer.sync().unwrap();
@@ -233,7 +233,7 @@ fn test_no_delete_extraneous() {
     fs::write(format!("{}/file1.txt", src_dir), b"Hello").unwrap();
     fs::write(format!("{}/file2.txt", dst_dir), b"Hello").unwrap();
 
-    let syncer = Syncer::new(src_dir.to_string(), dst_dir.to_string())
+    let syncer = LocalSyncer::new(src_dir.to_string(), dst_dir.to_string())
         .with_block_size(4)
         .with_delete_extraneous(false);
     syncer.sync().unwrap();
