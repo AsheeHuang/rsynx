@@ -189,21 +189,29 @@ impl Syncer {
         use std::collections::HashSet;
         let mut src_names = HashSet::new();
         let mut total_reused_bytes = 0usize;
+        let mut total_bytes = 0usize;
+
         for entry in fs::read_dir(src_dir)? {
             let entry = entry?;
             let file_name = entry.file_name();
             src_names.insert(file_name.clone());
             let path = entry.path();
             let dest_path = dst_dir.join(&file_name);
-            if path.is_file() {
+            
+            let entry_size = if path.is_file() {
                 let res = self.sync_file(&path, &dest_path)?;
                 total_reused_bytes += res.reused_bytes;
+                fs::metadata(&path)?.len() as usize
             } else if path.is_dir() {
                 let res = self.sync_dir(&path, &dest_path)?;
                 total_reused_bytes += res.reused_bytes;
+                res.new_bytes + res.reused_bytes
             } else {
                 info!("Skipping unsupported file type: {:?}", path);
-            }
+                0
+            };
+            
+            total_bytes += entry_size;
         }
         if self.delete_extraneous {
             for entry in fs::read_dir(dst_dir)? {
@@ -218,7 +226,6 @@ impl Syncer {
                 }
             }
         }
-        let total_bytes = fs::metadata(src_dir)?.len() as usize;
         let new_bytes = total_bytes.saturating_sub(total_reused_bytes);
         Ok(TransferResult { new_bytes, reused_bytes: total_reused_bytes })
     }
