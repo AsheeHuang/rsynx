@@ -42,7 +42,7 @@ jobs:
         sudo apt-get install -y bats
     
     - name: Install netcat (for network tests)
-      run: sudo apt-get install -y netcat
+      run: sudo apt-get install -y netcat-traditional
     
     - name: Run lint
       run: |
@@ -148,7 +148,7 @@ jobs:
         cargo geiger --format json --output-file geiger-report.json
         
     - name: Upload security report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: security-report
         path: geiger-report.json
