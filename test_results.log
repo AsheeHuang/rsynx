@@ -1,17 +1,17 @@
-Test run started at Mon Jul 14 22:34:39 CST 2025
-[2025-07-14 22:34:39] [INFO] Checking prerequisites...
-[2025-07-14 22:34:39] [DEBUG] bats version: Bats 1.12.0
-[2025-07-14 22:34:39] [INFO] Prerequisites check passed
-[2025-07-14 22:34:39] [INFO] Building project...
-[2025-07-14 22:34:40] [INFO] Build completed
-[2025-07-14 22:34:40] [INFO] Running bats shell tests...
-[2025-07-14 22:34:40] [DEBUG] Running bats test: cli_options
-[2025-07-14 22:34:43] [ERROR] Bats test failed: cli_options
-[2025-07-14 22:34:43] [DEBUG] Running bats test: edge_cases
-[2025-07-14 22:34:45] [ERROR] Bats test failed: edge_cases
-[2025-07-14 22:34:45] [DEBUG] Running bats test: local_sync
-[2025-07-14 22:34:46] [ERROR] Bats test failed: local_sync
-[2025-07-14 22:34:46] [DEBUG] Running bats test: network_sync
-[2025-07-14 22:34:51] [ERROR] Bats test failed: network_sync
-[2025-07-14 22:34:51] [ERROR] Some bats tests failed (4 failures)
-[2025-07-14 22:34:51] [ERROR] Some tests failed
+Test run started at Wed Jul 16 19:43:26 CST 2025
+[2025-07-16 19:43:26] [INFO] Checking prerequisites...
+[2025-07-16 19:43:26] [DEBUG] bats version: Bats 1.12.0
+[2025-07-16 19:43:26] [INFO] Prerequisites check passed
+[2025-07-16 19:43:26] [INFO] Building project...
+[2025-07-16 19:43:27] [INFO] Build completed
+[2025-07-16 19:43:27] [INFO] Running bats shell tests...
+[2025-07-16 19:43:27] [DEBUG] Running bats test: cli_options
+[2025-07-16 19:43:35] [ERROR] Bats test failed: cli_options
+[2025-07-16 19:43:35] [DEBUG] Running bats test: edge_cases
+[2025-07-16 19:43:37] [ERROR] Bats test failed: edge_cases
+[2025-07-16 19:43:37] [DEBUG] Running bats test: local_sync
+[2025-07-16 19:43:38] [ERROR] Bats test failed: local_sync
+[2025-07-16 19:43:38] [DEBUG] Running bats test: network_sync
+[2025-07-16 19:43:38] [ERROR] Bats test failed: network_sync
+[2025-07-16 19:43:38] [ERROR] Some bats tests failed (4 failures)
+[2025-07-16 19:43:38] [ERROR] Some tests failed
