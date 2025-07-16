@@ -1,6 +1,5 @@
 use crate::sync::{Syncer, TransferResult};
 use anyhow::{Context, Result};
-use hex;
 use log::info;
 use std::collections::HashMap;
 use std::{
@@ -217,13 +216,32 @@ impl NetworkSyncer {
         })
     }
 
-    pub fn serve(port: u16, block_size: usize) -> Result<TransferResult> {
+    pub fn serve(port: u16, block_size: usize) -> Result<()> {
         let listen_addr = format!("0.0.0.0:{}", port);
         let listener = TcpListener::bind(listen_addr.clone())
             .with_context(|| format!("Failed to bind to address: {}", listen_addr))?;
         info!("Server listening on {}", listen_addr);
-        let (mut stream, addr) = listener.accept()?;
-        info!("Accepted connection from {:?}", addr);
+        
+        loop {
+            let (mut stream, addr) = listener.accept()?;
+            info!("Accepted connection from {:?}", addr);
+            
+            // Handle the connection in a separate scope to allow for error handling
+            match Self::handle_connection(&mut stream, block_size) {
+                Ok(result) => {
+                    info!("Transfer completed successfully for client {:?}: {} bytes transferred, {} bytes reused", 
+                           addr, result.new_bytes, result.reused_bytes);
+                }
+                Err(e) => {
+                    log::error!("Error handling connection from {:?}: {}", addr, e);
+                    // Continue serving other connections even if one fails
+                    continue;
+                }
+            }
+        }
+    }
+    
+    fn handle_connection(stream: &mut TcpStream, block_size: usize) -> Result<TransferResult> {
         let mut reader = BufReader::new(stream.try_clone()?);
 
         let mut line = String::new();
@@ -250,7 +268,7 @@ impl NetworkSyncer {
         if target.exists() {
             let mut syncer = Syncer::new();
             syncer.block_size = block_size;
-            let checksums = syncer.calculate_checksums(&target)?;
+            let checksums = syncer.calculate_checksums(target)?;
             for block in checksums {
                 let strong_hex = hex::encode(block.strong_checksum);
                 writeln!(
@@ -268,7 +286,7 @@ impl NetworkSyncer {
         let temp_path = target.with_extension("tmp");
         let mut temp_file = File::create(&temp_path)?;
         let mut old_file = if target.exists() {
-            Some(File::open(&target)?)
+            Some(File::open(target)?)
         } else {
             None
         };
@@ -322,7 +340,7 @@ impl NetworkSyncer {
 
         temp_file.flush()?;
         let total_bytes = fs::metadata(&temp_path)?.len() as usize;
-        fs::rename(&temp_path, &target)?;
+        fs::rename(&temp_path, target)?;
         Ok(TransferResult {
             new_bytes: total_bytes,
             reused_bytes: 0,

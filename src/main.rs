@@ -1,7 +1,6 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-use rsynx::local_sync::LocalSyncer;
-use rsynx::network_sync::NetworkSyncer;
+use rsynx::{local_sync::LocalSyncer, network_sync::NetworkSyncer};
 #[derive(Parser, Debug)]
 #[command(author, about, long_about = None)]
 struct Args {
@@ -55,10 +54,16 @@ struct Args {
 fn main() -> Result<()> {
     env_logger::init();
     let args = Args::parse();
+    
+    // Validate block_size
+    if args.block_size == 0 {
+        return Err(anyhow::anyhow!("Block size cannot be zero"));
+    }
 
     if args.server {
         println!("Starting server on port {}", args.port);
         NetworkSyncer::serve(args.port, args.block_size)?;
+        // Server runs indefinitely, this line should never be reached
     } else {
         let source = args
             .source
@@ -94,6 +99,3 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-mod local_sync;
-mod network_sync;
-mod sync;

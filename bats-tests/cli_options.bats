@@ -94,7 +94,7 @@ load helpers/test_helpers
     create_test_file "$SRC_DIR/port_test.txt" "Port test"
     
     # Test various port numbers
-    for port in 1024 8080 9999; do
+    for port in 5566 7878 9999; do
         start_server $port 1024
         run_rsynx --port $port "$SRC_DIR/port_test.txt" "127.0.0.1:$DST_DIR/port_test_${port}.txt"
         assert_success "Port $port should be valid"

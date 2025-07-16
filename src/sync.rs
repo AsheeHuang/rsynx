@@ -29,6 +29,12 @@ pub struct Syncer {
     pub delete_extraneous: bool,
 }
 
+impl Default for Syncer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Syncer {
     pub fn new() -> Self {
         Self {

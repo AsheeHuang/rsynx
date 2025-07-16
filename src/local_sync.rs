@@ -89,6 +89,7 @@ impl LocalSyncer {
             .read(true)
             .write(true)
             .create(true)
+            .truncate(true)
             .open(&temp_path)?;
         temp_file.set_len(src_size)?;
 
