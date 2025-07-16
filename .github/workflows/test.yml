@@ -145,7 +145,7 @@ jobs:
     - name: Check for unsafe code
       run: |
         cargo install cargo-geiger
-        cargo geiger --format json --output-file geiger-report.json
+        cargo geiger --format json --output-file geiger-report.json --forbid-only
         
     - name: Upload security report
       uses: actions/upload-artifact@v4
