@@ -32,7 +32,7 @@ fn test_network_sync_file() -> Result<()> {
 
     let port = 7878;
 
-    let server_handle = thread::spawn(move || NetworkSyncer::serve(port, block_size));
+    let server_handle = thread::spawn(move || NetworkSyncer::serve_once(port, block_size));
 
     thread::sleep(Duration::from_millis(100));
 
@@ -50,7 +50,11 @@ fn test_network_sync_file() -> Result<()> {
         result.new_bytes, result.reused_bytes
     );
 
-    server_handle.join().expect("Server thread panicked")?;
+    let server_result = server_handle.join().expect("Server thread panicked")?;
+    println!(
+        "Server result: new_bytes: {}, reused_bytes: {}",
+        server_result.new_bytes, server_result.reused_bytes
+    );
 
     let mut dst_data = Vec::new();
     let mut f = File::open(dst_file)?;

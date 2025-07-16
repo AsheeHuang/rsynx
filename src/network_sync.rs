@@ -217,6 +217,28 @@ impl NetworkSyncer {
     }
 
     pub fn serve(port: u16, block_size: usize) -> Result<()> {
+        Self::serve_with_options(port, block_size, false)
+    }
+
+    pub fn serve_once(port: u16, block_size: usize) -> Result<TransferResult> {
+        let listen_addr = format!("0.0.0.0:{}", port);
+        let listener = TcpListener::bind(listen_addr.clone())
+            .with_context(|| format!("Failed to bind to address: {}", listen_addr))?;
+        info!("Server listening on {}", listen_addr);
+
+        let (mut stream, addr) = listener.accept()?;
+        info!("Accepted connection from {:?}", addr);
+
+        let result = Self::handle_connection(&mut stream, block_size)?;
+        info!(
+            "Transfer completed successfully for client {:?}: {} bytes transferred, {} bytes reused",
+            addr, result.new_bytes, result.reused_bytes
+        );
+
+        Ok(result)
+    }
+
+    fn serve_with_options(port: u16, block_size: usize, single_connection: bool) -> Result<()> {
         let listen_addr = format!("0.0.0.0:{}", port);
         let listener = TcpListener::bind(listen_addr.clone())
             .with_context(|| format!("Failed to bind to address: {}", listen_addr))?;
@@ -237,10 +259,18 @@ impl NetworkSyncer {
                 Err(e) => {
                     log::error!("Error handling connection from {:?}: {}", addr, e);
                     // Continue serving other connections even if one fails
-                    continue;
+                    if !single_connection {
+                        continue;
+                    }
                 }
             }
+
+            if single_connection {
+                break;
+            }
         }
+
+        Ok(())
     }
 
     fn handle_connection(stream: &mut TcpStream, block_size: usize) -> Result<TransferResult> {
