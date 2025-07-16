@@ -1,14 +1,14 @@
 use crate::sync::{Syncer, TransferResult};
 use anyhow::{Context, Result};
+use hex;
 use log::info;
+use std::collections::HashMap;
 use std::{
     fs::{self, File},
     io::{BufRead, BufReader, Read, Seek, SeekFrom, Write},
     net::{TcpListener, TcpStream},
     path::Path,
 };
-use std::collections::HashMap;
-use hex;
 
 /// NetworkSyncer implements network synchronization using rsync algorithm, currently only supports file synchronization.
 pub struct NetworkSyncer {
@@ -21,7 +21,12 @@ pub struct NetworkSyncer {
 }
 
 impl NetworkSyncer {
-    pub fn new(remote_address: String, remote_port: u16, source: String, destination: String) -> Self {
+    pub fn new(
+        remote_address: String,
+        remote_port: u16,
+        source: String,
+        destination: String,
+    ) -> Self {
         Self {
             syncer: Syncer::new(),
             remote_address,
@@ -45,12 +50,22 @@ impl NetworkSyncer {
 
         let src_path = Path::new(&self.source);
         if !src_path.is_file() {
-            return Err(anyhow::anyhow!("Only file sync supported for rsync algorithm in NetworkSyncer"));
+            return Err(anyhow::anyhow!(
+                "Only file sync supported for rsync algorithm in NetworkSyncer"
+            ));
         }
         let file_size = fs::metadata(src_path)?.len();
-        let src_filename = src_path.file_name().ok_or_else(|| anyhow::anyhow!("Source file has no name"))?;
+        let src_filename = src_path
+            .file_name()
+            .ok_or_else(|| anyhow::anyhow!("Source file has no name"))?;
         // Send file sync request, format: FILE <src_filename> <dst_filename> <filesize>
-        writeln!(stream, "FILE {} {} {}", src_filename.to_string_lossy(), self.destination, file_size)?;
+        writeln!(
+            stream,
+            "FILE {} {} {}",
+            src_filename.to_string_lossy(),
+            self.destination,
+            file_size
+        )?;
 
         // Read server's block summary data
         let mut reader = BufReader::new(stream.try_clone()?);
@@ -59,7 +74,7 @@ impl NetworkSyncer {
         let first_line = first_line.trim_end();
         let mut block_table = Vec::new();
         if first_line == "NOBLK" {
-            // Indicates destination file does not exist, cannot be reused 
+            // Indicates destination file does not exist, cannot be reused
             // TODO: send all data
         } else if first_line.starts_with("BLK ") {
             // Read all BLK data until BLKEND
@@ -77,8 +92,9 @@ impl NetworkSyncer {
                 let size: usize = parts[2].parse()?;
                 let weak: u32 = parts[3].parse()?;
                 let strong_hex = parts[4];
-                let strong_bytes = hex::decode(strong_hex)
-                    .with_context(|| format!("Failed to decode strong checksum from hex: {}", strong_hex))?;
+                let strong_bytes = hex::decode(strong_hex).with_context(|| {
+                    format!("Failed to decode strong checksum from hex: {}", strong_hex)
+                })?;
                 let mut strong = [0u8; 32];
                 strong.copy_from_slice(&strong_bytes);
                 block_table.push((offset, size, weak, strong));
@@ -87,13 +103,19 @@ impl NetworkSyncer {
                 line = line.trim_end().to_string();
             }
         } else {
-            return Err(anyhow::anyhow!("Invalid response from server: {}", first_line));
+            return Err(anyhow::anyhow!(
+                "Invalid response from server: {}",
+                first_line
+            ));
         }
 
         // Build weak checksum lookup table: weak -> Vec<(offset, size, strong)>
-        let mut weak_lookup: HashMap<u32, Vec<(u64, usize, [u8;32])>> = HashMap::new();
+        let mut weak_lookup: HashMap<u32, Vec<(u64, usize, [u8; 32])>> = HashMap::new();
         for &(offset, size, weak, strong) in &block_table {
-            weak_lookup.entry(weak).or_default().push((offset, size, strong));
+            weak_lookup
+                .entry(weak)
+                .or_default()
+                .push((offset, size, strong));
         }
 
         // Scan source file using rolling window to generate diff instructions
@@ -119,7 +141,9 @@ impl NetworkSyncer {
             while pos + block_size as u64 <= file_size {
                 if let Some(candidates) = weak_lookup.get(&current_weak) {
                     let current_strong = self.syncer.calculate_strong_checksum(&window);
-                    if let Some(&(blk_offset, blk_size, _)) = candidates.iter().find(|&&(_, _, s)| s == current_strong) {
+                    if let Some(&(blk_offset, blk_size, _)) =
+                        candidates.iter().find(|&&(_, _, s)| s == current_strong)
+                    {
                         // Found a match, first send any unmatched data
                         if !unmatched.is_empty() {
                             instructions.push(Instruction::Data(unmatched.clone()));
@@ -146,7 +170,12 @@ impl NetworkSyncer {
                     src_file.seek(SeekFrom::Start(pos + block_size as u64 - 1))?;
                     src_file.read_exact(&mut next_byte)?;
                     window.push(next_byte[0]);
-                    current_weak = self.syncer.update_weak_checksum(old_byte, next_byte[0], current_weak, block_size);
+                    current_weak = self.syncer.update_weak_checksum(
+                        old_byte,
+                        next_byte[0],
+                        current_weak,
+                        block_size,
+                    );
                 } else {
                     break;
                 }
@@ -166,13 +195,13 @@ impl NetworkSyncer {
                 instructions.push(Instruction::Data(unmatched));
             }
         }
-        
+
         for ins in instructions {
             match ins {
                 Instruction::Data(data) => {
                     writeln!(stream, "DATA {}", data.len())?;
                     stream.write_all(&data)?;
-                },
+                }
                 Instruction::Copy(offset, length) => {
                     writeln!(stream, "COPY {} {}", offset, length)?;
                 }
@@ -180,9 +209,12 @@ impl NetworkSyncer {
         }
         writeln!(stream, "DONE")?;
         stream.flush()?;
-        
+
         // TODO: reused_bytes calculation
-        Ok(TransferResult { new_bytes: file_size as usize, reused_bytes: 0 })
+        Ok(TransferResult {
+            new_bytes: file_size as usize,
+            reused_bytes: 0,
+        })
     }
 
     pub fn serve(port: u16, block_size: usize) -> Result<TransferResult> {
@@ -193,7 +225,7 @@ impl NetworkSyncer {
         let (mut stream, addr) = listener.accept()?;
         info!("Accepted connection from {:?}", addr);
         let mut reader = BufReader::new(stream.try_clone()?);
-        
+
         let mut line = String::new();
         reader.read_line(&mut line)?;
         let line = line.trim_end();
@@ -202,26 +234,37 @@ impl NetworkSyncer {
         if command != "FILE" {
             return Err(anyhow::anyhow!("Expected FILE command, got: {}", line));
         }
-        let _src_filename = parts.next().ok_or_else(|| anyhow::anyhow!("Missing src filename in FILE command"))?;
-        let dst_filename = parts.next().ok_or_else(|| anyhow::anyhow!("Missing dst filename in FILE command"))?;
-        let _filesize: u64 = parts.next().ok_or_else(|| anyhow::anyhow!("Missing filesize in FILE command"))?.parse()?;
-        
+        let _src_filename = parts
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("Missing src filename in FILE command"))?;
+        let dst_filename = parts
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("Missing dst filename in FILE command"))?;
+        let _filesize: u64 = parts
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("Missing filesize in FILE command"))?
+            .parse()?;
+
         let target = Path::new(dst_filename);
-        
+
         if target.exists() {
             let mut syncer = Syncer::new();
             syncer.block_size = block_size;
             let checksums = syncer.calculate_checksums(&target)?;
             for block in checksums {
                 let strong_hex = hex::encode(block.strong_checksum);
-                writeln!(stream, "BLK {} {} {} {}", block.offset, block.size, block.weak_checksum, strong_hex)?;
+                writeln!(
+                    stream,
+                    "BLK {} {} {} {}",
+                    block.offset, block.size, block.weak_checksum, strong_hex
+                )?;
             }
             writeln!(stream, "BLKEND")?;
         } else {
             writeln!(stream, "NOBLK")?;
         }
         stream.flush()?;
-        
+
         let temp_path = target.with_extension("tmp");
         let mut temp_file = File::create(&temp_path)?;
         let mut old_file = if target.exists() {
@@ -229,7 +272,7 @@ impl NetworkSyncer {
         } else {
             None
         };
-        
+
         loop {
             let mut line = String::new();
             if reader.read_line(&mut line)? == 0 {
@@ -243,32 +286,46 @@ impl NetworkSyncer {
             let cmd = parts.next().unwrap_or("");
             match cmd {
                 "DATA" => {
-                    let length: usize = parts.next().ok_or_else(|| anyhow::anyhow!("Missing length in DATA command"))?.parse()?;
+                    let length: usize = parts
+                        .next()
+                        .ok_or_else(|| anyhow::anyhow!("Missing length in DATA command"))?
+                        .parse()?;
                     let mut data = vec![0u8; length];
                     reader.read_exact(&mut data)?;
                     temp_file.write_all(&data)?;
-                },
+                }
                 "COPY" => {
-                    let offset: u64 = parts.next().ok_or_else(|| anyhow::anyhow!("Missing offset in COPY command"))?.parse()?;
-                    let length: usize = parts.next().ok_or_else(|| anyhow::anyhow!("Missing length in COPY command"))?.parse()?;
+                    let offset: u64 = parts
+                        .next()
+                        .ok_or_else(|| anyhow::anyhow!("Missing offset in COPY command"))?
+                        .parse()?;
+                    let length: usize = parts
+                        .next()
+                        .ok_or_else(|| anyhow::anyhow!("Missing length in COPY command"))?
+                        .parse()?;
                     if let Some(ref mut f) = old_file {
                         f.seek(SeekFrom::Start(offset))?;
                         let mut buf = vec![0u8; length];
                         f.read_exact(&mut buf)?;
                         temp_file.write_all(&buf)?;
                     } else {
-                        return Err(anyhow::anyhow!("COPY command received but no old file available"));
+                        return Err(anyhow::anyhow!(
+                            "COPY command received but no old file available"
+                        ));
                     }
-                },
+                }
                 _ => {
                     return Err(anyhow::anyhow!("Unknown command: {}", cmd));
                 }
             }
         }
-        
+
         temp_file.flush()?;
         let total_bytes = fs::metadata(&temp_path)?.len() as usize;
         fs::rename(&temp_path, &target)?;
-        Ok(TransferResult { new_bytes: total_bytes, reused_bytes: 0 })
+        Ok(TransferResult {
+            new_bytes: total_bytes,
+            reused_bytes: 0,
+        })
     }
 }

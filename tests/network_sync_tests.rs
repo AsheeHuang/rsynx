@@ -1,9 +1,9 @@
 use anyhow::Result;
+use rsynx::network_sync::NetworkSyncer;
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::thread;
 use std::time::Duration;
-use rsynx::network_sync::NetworkSyncer;
 
 #[test]
 fn test_network_sync_file() -> Result<()> {
@@ -32,17 +32,23 @@ fn test_network_sync_file() -> Result<()> {
 
     let port = 7878;
 
-    let server_handle = thread::spawn(move || {
-        NetworkSyncer::serve(port, block_size)
-    });
+    let server_handle = thread::spawn(move || NetworkSyncer::serve(port, block_size));
 
     thread::sleep(Duration::from_millis(100));
 
     println!("Syncing {} to {}", src_filename, dst_file);
-    let client_syncer = NetworkSyncer::new("127.0.0.1".to_string(), port, src_filename.to_string(), dst_file.to_string())
-        .with_block_size(block_size);
+    let client_syncer = NetworkSyncer::new(
+        "127.0.0.1".to_string(),
+        port,
+        src_filename.to_string(),
+        dst_file.to_string(),
+    )
+    .with_block_size(block_size);
     let result = client_syncer.sync()?;
-    println!("Client result: new_bytes: {}, reused_bytes: {}", result.new_bytes, result.reused_bytes);
+    println!(
+        "Client result: new_bytes: {}, reused_bytes: {}",
+        result.new_bytes, result.reused_bytes
+    );
 
     server_handle.join().expect("Server thread panicked")?;
 

@@ -1,12 +1,12 @@
+use anyhow::Context;
 use anyhow::Result;
+use filetime::{set_file_times, FileTime};
+use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File},
     io::Read,
-    path::Path
+    path::Path,
 };
-use filetime::{FileTime, set_file_times};
-use anyhow::Context;
-use sha2::{Sha256, Digest};
 
 #[derive(Debug)]
 pub struct Block {
@@ -41,7 +41,7 @@ impl Syncer {
     pub fn calculate_weak_checksum(&self, data: &[u8]) -> u32 {
         let mut a: u32 = 0;
         let mut b: u32 = 0;
-        
+
         for &byte in data {
             a = a.wrapping_add(byte as u32);
             b = b.wrapping_add(a);
@@ -55,11 +55,21 @@ impl Syncer {
         hasher.finalize().into()
     }
 
-    pub fn update_weak_checksum(&self, old_byte: u8, new_byte: u8, old_sum: u32, len: usize) -> u32 {
+    pub fn update_weak_checksum(
+        &self,
+        old_byte: u8,
+        new_byte: u8,
+        old_sum: u32,
+        len: usize,
+    ) -> u32 {
         let a_old = old_sum & 0xffff;
         let b_old = (old_sum >> 16) & 0xffff;
-        let a_new = a_old.wrapping_sub(old_byte as u32).wrapping_add(new_byte as u32);
-        let b_new = b_old.wrapping_sub((len as u32).wrapping_mul(old_byte as u32)).wrapping_add(a_new);
+        let a_new = a_old
+            .wrapping_sub(old_byte as u32)
+            .wrapping_add(new_byte as u32);
+        let b_new = b_old
+            .wrapping_sub((len as u32).wrapping_mul(old_byte as u32))
+            .wrapping_add(a_new);
         (a_new & 0xffff) | ((b_new & 0xffff) << 16)
     }
 
@@ -97,16 +107,21 @@ impl Syncer {
         if self.preserve_metadata {
             let src_meta = fs::metadata(src)
                 .with_context(|| format!("Failed to get metadata for source file: {:?}", src))?;
-            fs::set_permissions(dst, src_meta.permissions())
-                .with_context(|| format!("Failed to set permissions for destination file: {:?}", dst))?;
+            fs::set_permissions(dst, src_meta.permissions()).with_context(|| {
+                format!("Failed to set permissions for destination file: {:?}", dst)
+            })?;
             let atime = FileTime::from_last_access_time(&src_meta);
             let mtime = FileTime::from_last_modification_time(&src_meta);
-            set_file_times(dst, atime, mtime)
-                .with_context(|| format!("Failed to set file times for destination file: {:?}", dst))?;
+            set_file_times(dst, atime, mtime).with_context(|| {
+                format!("Failed to set file times for destination file: {:?}", dst)
+            })?;
         }
         let src_size = fs::metadata(src)
             .with_context(|| format!("Failed to get metadata for source file: {:?}", src))?
             .len() as usize;
-        Ok(TransferResult { new_bytes: src_size, reused_bytes: 0 })
+        Ok(TransferResult {
+            new_bytes: src_size,
+            reused_bytes: 0,
+        })
     }
 }

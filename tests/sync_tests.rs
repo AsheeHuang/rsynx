@@ -1,13 +1,13 @@
+use filetime::FileTime;
+use rand::Rng;
 use rsynx::local_sync::LocalSyncer;
+use std::os::unix::fs::MetadataExt;
+use std::os::unix::fs::PermissionsExt;
 use std::{
     fs::{self, File},
     io::{Read, Write},
     path::Path,
 };
-use filetime::FileTime;
-use std::os::unix::fs::PermissionsExt;
-use std::os::unix::fs::MetadataExt;
-use rand::Rng;
 
 fn setup_test_files(name: &str, src_content: &[u8], dst_content: &[u8]) -> (String, String) {
     let src_path = format!("test_src_{}", name);
@@ -118,7 +118,10 @@ fn test_large_file() {
     let (src, dst) = setup_test_files("large_file", &src_content, &dst_content);
     let syncer = LocalSyncer::new(src.clone(), dst.clone()).with_block_size(512);
     let result = syncer.sync().unwrap();
-    println!("Transferred: {} bytes, Not transferred: {} bytes", result.new_bytes, result.reused_bytes);
+    println!(
+        "Transferred: {} bytes, Not transferred: {} bytes",
+        result.new_bytes, result.reused_bytes
+    );
 
     // Verify the content of the destination file
     verify_content(&dst, &src_content);
@@ -217,7 +220,7 @@ fn test_delete_extraneous() {
 
     let _ = fs::remove_dir_all(src_dir);
     let _ = fs::remove_dir_all(dst_dir);
-} 
+}
 
 #[test]
 fn test_no_delete_extraneous() {
@@ -237,7 +240,7 @@ fn test_no_delete_extraneous() {
         .with_block_size(4)
         .with_delete_extraneous(false);
     syncer.sync().unwrap();
-    
+
     assert!(Path::new(&format!("{}/file1.txt", dst_dir)).exists());
     assert!(Path::new(&format!("{}/file2.txt", dst_dir)).exists());
 

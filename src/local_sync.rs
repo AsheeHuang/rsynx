@@ -1,18 +1,18 @@
-use crate::sync::{Syncer, TransferResult, Block};
-use std::fs::OpenOptions;
+use crate::sync::{Block, Syncer, TransferResult};
+use anyhow::Context;
 use anyhow::Result;
+use filetime::{set_file_times, FileTime};
 use log::info;
+use memmap2::MmapMut;
+use std::cmp::min;
+use std::collections::HashMap;
+use std::fs::OpenOptions;
 use std::{
     collections::HashSet,
     fs::{self, File},
     io::{Read, Seek, SeekFrom},
     path::Path,
 };
-use filetime::{FileTime, set_file_times};
-use anyhow::Context;
-use memmap2::MmapMut;
-use std::collections::HashMap;
-use std::cmp::min;
 
 /// LocalSyncer implements local file/directory synchronization using shared Syncer functionality.
 pub struct LocalSyncer {
@@ -71,7 +71,10 @@ impl LocalSyncer {
         let dst_blocks = self.syncer.calculate_checksums(dst_path)?;
         let mut weak_lookup: HashMap<u32, Vec<&Block>> = HashMap::new();
         for block in &dst_blocks {
-            weak_lookup.entry(block.weak_checksum).or_default().push(block);
+            weak_lookup
+                .entry(block.weak_checksum)
+                .or_default()
+                .push(block);
         }
 
         let mut src_file = File::open(src_path)?;
@@ -133,8 +136,14 @@ impl LocalSyncer {
                 let old_byte = window[0];
                 window.copy_within(1.., 0);
                 src_file.seek(SeekFrom::Start(offset + self.syncer.block_size as u64 - 1))?;
-                src_file.read_exact(&mut window[self.syncer.block_size - 1..self.syncer.block_size])?;
-                weak = self.syncer.update_weak_checksum(old_byte, window[self.syncer.block_size - 1], weak, self.syncer.block_size);
+                src_file
+                    .read_exact(&mut window[self.syncer.block_size - 1..self.syncer.block_size])?;
+                weak = self.syncer.update_weak_checksum(
+                    old_byte,
+                    window[self.syncer.block_size - 1],
+                    weak,
+                    self.syncer.block_size,
+                );
             } else {
                 break;
             }
@@ -146,22 +155,33 @@ impl LocalSyncer {
             mmap[last_match as usize..].copy_from_slice(&remainder);
         }
         mmap.flush()?;
-        
+
         if self.syncer.preserve_metadata {
             let src_meta = fs::metadata(src_path)?;
-            fs::set_permissions(&temp_path, src_meta.permissions())
-                .with_context(|| format!("Failed to set permissions for temporary file: {:?}", temp_path))?;
+            fs::set_permissions(&temp_path, src_meta.permissions()).with_context(|| {
+                format!(
+                    "Failed to set permissions for temporary file: {:?}",
+                    temp_path
+                )
+            })?;
             let atime = FileTime::from_last_access_time(&src_meta);
             let mtime = FileTime::from_last_modification_time(&src_meta);
-            set_file_times(&temp_path, atime, mtime)
-                .with_context(|| format!("Failed to set file times for temporary file: {:?}", temp_path))?;
+            set_file_times(&temp_path, atime, mtime).with_context(|| {
+                format!(
+                    "Failed to set file times for temporary file: {:?}",
+                    temp_path
+                )
+            })?;
         }
-        
+
         fs::rename(temp_path.clone(), dst_path)?;
-        
+
         let total_bytes = src_size as usize;
         let new_bytes = total_bytes.saturating_sub(reused_bytes);
-        Ok(TransferResult { new_bytes, reused_bytes })
+        Ok(TransferResult {
+            new_bytes,
+            reused_bytes,
+        })
     }
 
     fn sync_dir(&self, src_dir: &Path, dst_dir: &Path) -> Result<TransferResult> {
@@ -179,7 +199,7 @@ impl LocalSyncer {
             src_names.insert(file_name.clone());
             let path = entry.path();
             let dest_path = dst_dir.join(&file_name);
-            
+
             let entry_size = if path.is_file() {
                 let res = self.sync_file(&path, &dest_path)?;
                 total_reused_bytes += res.reused_bytes;
@@ -192,7 +212,7 @@ impl LocalSyncer {
                 info!("Skipping unsupported file type: {:?}", path);
                 0
             };
-            
+
             total_bytes += entry_size;
         }
         if self.syncer.delete_extraneous {
@@ -209,6 +229,9 @@ impl LocalSyncer {
             }
         }
         let new_bytes = total_bytes.saturating_sub(total_reused_bytes);
-        Ok(TransferResult { new_bytes, reused_bytes: total_reused_bytes })
+        Ok(TransferResult {
+            new_bytes,
+            reused_bytes: total_reused_bytes,
+        })
     }
 }
