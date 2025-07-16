@@ -1,6 +1,6 @@
 use anyhow::Context;
 use anyhow::Result;
-use filetime::{set_file_times, FileTime};
+use filetime::{FileTime, set_file_times};
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File},

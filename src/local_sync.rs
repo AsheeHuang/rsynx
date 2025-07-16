@@ -1,7 +1,7 @@
 use crate::sync::{Block, Syncer, TransferResult};
 use anyhow::Context;
 use anyhow::Result;
-use filetime::{set_file_times, FileTime};
+use filetime::{FileTime, set_file_times};
 use log::info;
 use memmap2::MmapMut;
 use std::cmp::min;

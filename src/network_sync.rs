@@ -229,8 +229,10 @@ impl NetworkSyncer {
             // Handle the connection in a separate scope to allow for error handling
             match Self::handle_connection(&mut stream, block_size) {
                 Ok(result) => {
-                    info!("Transfer completed successfully for client {:?}: {} bytes transferred, {} bytes reused", 
-                           addr, result.new_bytes, result.reused_bytes);
+                    info!(
+                        "Transfer completed successfully for client {:?}: {} bytes transferred, {} bytes reused",
+                        addr, result.new_bytes, result.reused_bytes
+                    );
                 }
                 Err(e) => {
                     log::error!("Error handling connection from {:?}: {}", addr, e);
