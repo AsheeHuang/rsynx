@@ -54,7 +54,7 @@ struct Args {
 fn main() -> Result<()> {
     env_logger::init();
     let args = Args::parse();
-    
+
     // Validate block_size
     if args.block_size == 0 {
         return Err(anyhow::anyhow!("Block size cannot be zero"));
@@ -98,4 +98,3 @@ fn main() -> Result<()> {
     }
     Ok(())
 }
-

@@ -221,11 +221,11 @@ impl NetworkSyncer {
         let listener = TcpListener::bind(listen_addr.clone())
             .with_context(|| format!("Failed to bind to address: {}", listen_addr))?;
         info!("Server listening on {}", listen_addr);
-        
+
         loop {
             let (mut stream, addr) = listener.accept()?;
             info!("Accepted connection from {:?}", addr);
-            
+
             // Handle the connection in a separate scope to allow for error handling
             match Self::handle_connection(&mut stream, block_size) {
                 Ok(result) => {
@@ -240,7 +240,7 @@ impl NetworkSyncer {
             }
         }
     }
-    
+
     fn handle_connection(stream: &mut TcpStream, block_size: usize) -> Result<TransferResult> {
         let mut reader = BufReader::new(stream.try_clone()?);
 
