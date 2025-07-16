@@ -56,7 +56,9 @@ jobs:
       run: cargo test --test '*' --verbose
     
     - name: Run bats tests
-      run: ./run_tests.sh --bats-only --verbose
+      run: |
+        chmod +x ./run_tests.sh
+        ./run_tests.sh --bats-only --verbose
     
     - name: Run all tests with coverage
       if: matrix.rust == 'stable'
