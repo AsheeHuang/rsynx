@@ -70,7 +70,7 @@ jobs:
       if: matrix.rust == 'stable'
       uses: codecov/codecov-action@v3
       with:
-        file: ./coverage/cobertura.xml
+        file: ./coverage/tarpaulin-report.html
         fail_ci_if_error: true
 
   performance:
