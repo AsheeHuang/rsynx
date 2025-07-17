@@ -75,19 +75,9 @@ load helpers/test_helpers
 }
 
 @test "server mode with port option" {
-    run_rsynx --server --port 7886 &
-    SERVER_PID=$!
-    
-    # Give server time to start
+    start_server 7886
     sleep 0.5
-    
-    # Check if server is running
-    kill -0 "$SERVER_PID"
-    
-    # Clean up
-    kill "$SERVER_PID"
-    wait "$SERVER_PID" 2>/dev/null || true
-    SERVER_PID=""
+    stop_server
 }
 
 @test "port option validation" {
