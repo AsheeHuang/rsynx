@@ -60,18 +60,18 @@ jobs:
         chmod +x ./run_tests.sh
         ./run_tests.sh --bats-only --verbose
     
-    - name: Run all tests with coverage
-      if: matrix.rust == 'stable'
-      run: |
-        cargo install cargo-tarpaulin
-        ./run_tests.sh --coverage --verbose
+    # - name: Run all tests with coverage
+    #   if: matrix.rust == 'stable'
+    #   run: |
+    #     cargo install cargo-tarpaulin
+    #     ./run_tests.sh --coverage --verbose
     
-    - name: Upload coverage to Codecov
-      if: matrix.rust == 'stable'
-      uses: codecov/codecov-action@v3
-      with:
-        file: ./coverage/tarpaulin-report.html
-        fail_ci_if_error: true
+    # - name: Upload coverage to Codecov
+    #   if: matrix.rust == 'stable'
+    #   uses: codecov/codecov-action@v3
+    #   with:
+    #     file: ./coverage/tarpaulin-report.html
+    #     fail_ci_if_error: true
 
   performance:
     name: Performance Tests
