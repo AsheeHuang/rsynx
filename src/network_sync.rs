@@ -1,5 +1,6 @@
 use crate::sync::{Syncer, TransferResult};
 use anyhow::{Context, Result};
+use indicatif::{ProgressBar, ProgressStyle};
 use log::info;
 use std::collections::HashMap;
 use std::{
@@ -57,6 +58,16 @@ impl NetworkSyncer {
         let src_filename = src_path
             .file_name()
             .ok_or_else(|| anyhow::anyhow!("Source file has no name"))?;
+
+        // Create progress bar
+        let pb = ProgressBar::new(file_size);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")
+                .expect("Failed to set progress bar template")
+                .progress_chars("#>-"),
+        );
+        pb.set_message(format!("Network sync: {}", src_filename.to_string_lossy()));
         // Send file sync request, format: FILE <src_filename> <dst_filename> <filesize>
         writeln!(
             stream,
@@ -150,6 +161,7 @@ impl NetworkSyncer {
                         }
                         instructions.push(Instruction::Copy(blk_offset, blk_size));
                         pos += block_size as u64;
+                        pb.set_position(pos);
                         if pos + block_size as u64 <= file_size {
                             src_file.seek(SeekFrom::Start(pos))?;
                             src_file.read_exact(&mut window)?;
@@ -163,6 +175,7 @@ impl NetworkSyncer {
                 // No match found, add first byte of window to unmatched data and slide one byte
                 unmatched.push(window[0]);
                 pos += 1;
+                pb.set_position(pos);
                 if pos + block_size as u64 - 1 < file_size {
                     let old_byte = window.remove(0);
                     let mut next_byte = [0u8; 1];
@@ -208,6 +221,9 @@ impl NetworkSyncer {
         }
         writeln!(stream, "DONE")?;
         stream.flush()?;
+
+        // Complete progress bar
+        pb.finish_with_message(format!("Network sync complete: {} ({} bytes)", src_filename.to_string_lossy(), file_size));
 
         // TODO: reused_bytes calculation
         Ok(TransferResult {

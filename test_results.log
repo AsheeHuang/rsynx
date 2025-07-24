@@ -1,23 +1,21 @@
-Test run started at Thu Jul 17 12:13:25 CST 2025
-[2025-07-17 12:13:25] [INFO] Checking prerequisites...
-[2025-07-17 12:13:26] [DEBUG] bats version: Bats 1.12.0
-[2025-07-17 12:13:26] [INFO] Prerequisites check passed
-[2025-07-17 12:13:26] [INFO] Building project...
-[2025-07-17 12:13:26] [INFO] Build completed
-[2025-07-17 12:13:26] [INFO] Running Rust unit tests...
-[2025-07-17 12:13:29] [INFO] Unit tests passed
-[2025-07-17 12:13:29] [INFO] Running Rust integration tests...
-[2025-07-17 12:13:34] [INFO] Integration tests passed
-[2025-07-17 12:13:34] [INFO] Running bats shell tests...
-[2025-07-17 12:13:34] [DEBUG] Running bats test: cli_options
-[2025-07-17 12:13:56] [DEBUG] Bats test passed: cli_options
-[2025-07-17 12:13:56] [DEBUG] Running bats test: edge_cases
-[2025-07-17 12:14:08] [DEBUG] Bats test passed: edge_cases
-[2025-07-17 12:14:08] [DEBUG] Running bats test: local_sync
-[2025-07-17 12:14:18] [DEBUG] Bats test passed: local_sync
-[2025-07-17 12:14:18] [DEBUG] Running bats test: network_sync
-[2025-07-17 12:14:32] [DEBUG] Bats test passed: network_sync
-[2025-07-17 12:14:32] [INFO] All bats tests passed
-[2025-07-17 12:14:32] [INFO] Generating coverage report...
-[2025-07-17 12:18:44] [INFO] Coverage report generated in: /home/timhuang/Repo/rsynx/coverage
-[2025-07-17 12:18:44] [INFO] All tests passed!
+Test run started at Thu Jul 24 17:51:07 CST 2025
+[2025-07-24 17:51:07] [INFO] Checking prerequisites...
+[2025-07-24 17:51:07] [DEBUG] bats version: Bats 1.12.0
+[2025-07-24 17:51:07] [INFO] Prerequisites check passed
+[2025-07-24 17:51:07] [INFO] Building project...
+[2025-07-24 17:51:08] [INFO] Build completed
+[2025-07-24 17:51:08] [INFO] Running Rust unit tests...
+[2025-07-24 17:51:10] [INFO] Unit tests passed
+[2025-07-24 17:51:10] [INFO] Running Rust integration tests...
+[2025-07-24 17:51:18] [INFO] Integration tests passed
+[2025-07-24 17:51:18] [INFO] Running bats shell tests...
+[2025-07-24 17:51:18] [DEBUG] Running bats test: cli_options
+[2025-07-24 17:51:41] [DEBUG] Bats test passed: cli_options
+[2025-07-24 17:51:41] [DEBUG] Running bats test: edge_cases
+[2025-07-24 17:51:55] [DEBUG] Bats test passed: edge_cases
+[2025-07-24 17:51:55] [DEBUG] Running bats test: local_sync
+[2025-07-24 17:52:06] [DEBUG] Bats test passed: local_sync
+[2025-07-24 17:52:06] [DEBUG] Running bats test: network_sync
+[2025-07-24 17:52:21] [DEBUG] Bats test passed: network_sync
+[2025-07-24 17:52:21] [INFO] All bats tests passed
+[2025-07-24 17:52:21] [INFO] All tests passed!

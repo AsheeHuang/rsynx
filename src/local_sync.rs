@@ -2,6 +2,7 @@ use crate::sync::{Block, Syncer, TransferResult};
 use anyhow::Context;
 use anyhow::Result;
 use filetime::{FileTime, set_file_times};
+use indicatif::{ProgressBar, ProgressStyle};
 use log::info;
 use memmap2::MmapMut;
 use std::cmp::min;
@@ -84,6 +85,16 @@ impl LocalSyncer {
             return self.syncer.copy_file(src_path, dst_path);
         }
 
+        // Create progress bar
+        let pb = ProgressBar::new(src_size);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")
+                .expect("Failed to set progress bar template")
+                .progress_chars("#>-"),
+        );
+        pb.set_message(format!("Syncing {}", src_path.display()));
+
         let temp_path = dst_path.with_extension("tmp");
         let temp_file = OpenOptions::new()
             .read(true)
@@ -122,6 +133,7 @@ impl LocalSyncer {
                     reused_bytes += block.size;
                     offset += self.syncer.block_size as u64;
                     last_match = offset;
+                    pb.set_position(offset);
                     if offset + self.syncer.block_size as u64 <= src_size {
                         src_file.seek(SeekFrom::Start(offset))?;
                         src_file.read_exact(&mut window)?;
@@ -133,6 +145,7 @@ impl LocalSyncer {
                 }
             }
             offset += 1;
+            pb.set_position(offset);
             if offset + self.syncer.block_size as u64 <= src_size {
                 let old_byte = window[0];
                 window.copy_within(1.., 0);
@@ -176,6 +189,9 @@ impl LocalSyncer {
         }
 
         fs::rename(temp_path.clone(), dst_path)?;
+
+        // Complete progress bar
+        pb.finish_with_message(format!("Synced {} ({} bytes)", src_path.display(), src_size));
 
         let total_bytes = src_size as usize;
         let new_bytes = total_bytes.saturating_sub(reused_bytes);
