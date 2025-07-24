@@ -32,4 +32,4 @@ The tool uses a combination of techniques to optimize performance:
 ## TODO
 - [x] Add support for TCP connections
 - [ ] Add support for compression
-- [ ] Add Progress Bar
+- [x] Add Progress Bar
