@@ -191,7 +191,11 @@ impl LocalSyncer {
         fs::rename(temp_path.clone(), dst_path)?;
 
         // Complete progress bar
-        pb.finish_with_message(format!("Synced {} ({} bytes)", src_path.display(), src_size));
+        pb.finish_with_message(format!(
+            "Synced {} ({} bytes)",
+            src_path.display(),
+            src_size
+        ));
 
         let total_bytes = src_size as usize;
         let new_bytes = total_bytes.saturating_sub(reused_bytes);

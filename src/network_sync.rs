@@ -223,7 +223,11 @@ impl NetworkSyncer {
         stream.flush()?;
 
         // Complete progress bar
-        pb.finish_with_message(format!("Network sync complete: {} ({} bytes)", src_filename.to_string_lossy(), file_size));
+        pb.finish_with_message(format!(
+            "Network sync complete: {} ({} bytes)",
+            src_filename.to_string_lossy(),
+            file_size
+        ));
 
         // TODO: reused_bytes calculation
         Ok(TransferResult {
