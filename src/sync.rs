@@ -1,10 +1,11 @@
 use anyhow::Context;
 use anyhow::Result;
 use filetime::{FileTime, set_file_times};
+use flate2::{Compression, read::GzDecoder, write::GzEncoder};
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File},
-    io::Read,
+    io::{Read, Write},
     path::Path,
 };
 
@@ -27,6 +28,7 @@ pub struct Syncer {
     pub block_size: usize,
     pub preserve_metadata: bool,
     pub delete_extraneous: bool,
+    pub compress: bool,
 }
 
 impl Default for Syncer {
@@ -41,6 +43,7 @@ impl Syncer {
             block_size: 1024,
             preserve_metadata: false,
             delete_extraneous: false,
+            compress: false,
         }
     }
 
@@ -129,5 +132,28 @@ impl Syncer {
             new_bytes: src_size,
             reused_bytes: 0,
         })
+    }
+
+    /// Compress data using gzip compression
+    pub fn compress_data(&self, data: &[u8]) -> Result<Vec<u8>> {
+        if !self.compress {
+            return Ok(data.to_vec());
+        }
+
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(data)?;
+        encoder.finish().map_err(Into::into)
+    }
+
+    /// Decompress data that was compressed with gzip
+    pub fn decompress_data(&self, compressed_data: &[u8]) -> Result<Vec<u8>> {
+        if !self.compress {
+            return Ok(compressed_data.to_vec());
+        }
+
+        let mut decoder = GzDecoder::new(compressed_data);
+        let mut decompressed = Vec::new();
+        decoder.read_to_end(&mut decompressed)?;
+        Ok(decompressed)
     }
 }

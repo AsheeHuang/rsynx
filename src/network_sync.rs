@@ -42,6 +42,11 @@ impl NetworkSyncer {
         self
     }
 
+    pub fn with_compression(mut self, compress: bool) -> Self {
+        self.syncer.compress = compress;
+        self
+    }
+
     pub fn sync(&self) -> Result<TransferResult> {
         let addr = format!("{}:{}", self.remote_address, self.remote_port);
         let mut stream = TcpStream::connect(&addr)

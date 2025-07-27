@@ -8,6 +8,9 @@ A Rust implementation of an efficient file synchronization tool using the rsync 
 # Sync with local files
 cargo run -- <source_path> <destination_path>
 
+# Sync with compression enabled
+cargo run -- --compress <source_path> <destination_path>
+
 # Sync with network
 cargo run -- --server --port <port>
 cargo run -- <source_path> <server_address>:<destination_path> --port <port>
@@ -28,8 +31,9 @@ The tool uses a combination of techniques to optimize performance:
 - Memory mapping for efficient file I/O
 - Rolling checksum algorithm for quick block matching
 - Block-level deduplication to minimize data transfer
+- Optional gzip compression for reduced bandwidth usage
 
 ## TODO
 - [x] Add support for TCP connections
-- [ ] Add support for compression
+- [x] Add support for compression
 - [x] Add Progress Bar

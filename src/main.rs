@@ -49,6 +49,14 @@ struct Args {
         help = "Port number for server mode"
     )]
     port: u16,
+
+    #[arg(
+        short = 'z',
+        long = "compress",
+        default_value_t = false,
+        help = "Enable compression during transfer"
+    )]
+    compress: bool,
 }
 
 fn main() -> Result<()> {
@@ -81,14 +89,16 @@ fn main() -> Result<()> {
                 source,
                 parts[1].to_string(),
             )
-            .with_block_size(args.block_size);
+            .with_block_size(args.block_size)
+            .with_compression(args.compress);
             let _result = syncer.sync().with_context(|| "Failed to sync")?;
             println!("Sync complete!");
         } else {
             let syncer = LocalSyncer::new(source, destination)
                 .with_block_size(args.block_size)
                 .with_preserve_metadata(args.preserve_metadata)
-                .with_delete_extraneous(args.delete_extraneous);
+                .with_delete_extraneous(args.delete_extraneous)
+                .with_compression(args.compress);
             let result = syncer.sync().with_context(|| "Failed to sync")?;
             println!(
                 "Transferred: {} bytes, Not transferred: {} bytes",

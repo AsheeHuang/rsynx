@@ -46,6 +46,11 @@ impl LocalSyncer {
         self
     }
 
+    pub fn with_compression(mut self, compress: bool) -> Self {
+        self.syncer.compress = compress;
+        self
+    }
+
     pub fn sync(&self) -> Result<TransferResult> {
         info!("Local syncing...");
         let src_path = Path::new(&self.source);
